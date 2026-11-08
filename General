@@ -23,7 +23,6 @@ session = None
 offset = 0
 GAME_STATES: dict = {}
 
-# --- игровые константы ---
 MS_SIZE, MS_MINES = 9, 10
 SN_SIZE = 15
 TT_W, TT_H = 10, 20
@@ -135,7 +134,7 @@ async def answer_widget(qid, payload):
     if isinstance(payload, dict):
         payload = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
     try:
-        await api('answerWidgetQuery', {'widget_query_id': qid, 'data': payload[:1000]})
+        await api('answerWidgetQuery', {'widget_query_id': qid, 'data': payload[:1900]})
     except Exception:
         logging.exception("answerWidgetQuery failed")
 
@@ -143,47 +142,49 @@ async def send_game_widget(chat_id, chat_data='menu'):
     return await api('sendWidget', {
         'chat_id': chat_id,
         'html': GAME_WIDGET_HTML,
-        'width': 340,
-        'height': 620,
+        'width': 380,
+        'height': 680,
         'allow_queries': True,
         'chat_data': chat_data
     })
 
 # ============================================================
-#  Widget HTML — flex, кнопки прижаты к низу, до края несколько пикселей
+#  Widget HTML — заполняет весь экран
 # ============================================================
 GAME_WIDGET_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
-html{height:100%}
-body{height:100%;padding:6px;box-sizing:border-box;display:flex;
- background:linear-gradient(165deg,#AECFE9,#82AEDB 55%,#6E9AC9);background-attachment:fixed;
- color:#0F2440;font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
- font-size:14px;font-weight:600;-webkit-font-smoothing:antialiased}
-.wrap{flex:1;display:flex;flex-direction:column;background:#fff;border-radius:22px;
- padding:12px 12px 6px;box-shadow:0 20px 44px rgba(30,64,120,.22),0 3px 10px rgba(30,64,120,.10);
- min-height:0;max-height:100%}
+html,body{height:100%;width:100%;overflow:hidden}
+body{
+  padding:6px;
+  background:linear-gradient(165deg,#AECFE9,#82AEDB 55%,#6E9AC9);
+  color:#0F2440;
+  font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  font-size:14px;font-weight:600;-webkit-font-smoothing:antialiased;
+  display:flex;
+}
+.wrap{
+  flex:1;display:flex;flex-direction:column;min-height:0;min-width:0;
+  background:#fff;border-radius:20px;
+  padding:12px 12px 6px;
+  box-shadow:0 20px 44px rgba(30,64,120,.22),0 3px 10px rgba(30,64,120,.10);
+}
 .brand{font-size:10px;font-weight:800;letter-spacing:2px;color:#6E9AC9;text-transform:uppercase;flex-shrink:0}
 .title{font-size:19px;font-weight:900;letter-spacing:-.4px;margin:4px 0 2px;color:#0F2440;flex-shrink:0}
-.sub{font-size:11.5px;color:#6E86A0;margin-bottom:8px;line-height:1.35;flex-shrink:0}
-.content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
-.content::-webkit-scrollbar{width:0}
-.buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;flex-shrink:0}
-.btn{display:flex;align-items:center;justify-content:center;height:42px;border:0;border-radius:999px;
- background:#EAF2FB;color:#2E5C8A;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;
- padding:0 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);transition:transform .12s,filter .2s}
-.btn.primary{background:linear-gradient(180deg,#3A93E0,#217ECE);color:#fff;
- box-shadow:0 6px 16px rgba(33,126,206,.32)}
-.btn.wide{grid-column:1/-1}
-.btn:active{transform:scale(.97)}
-.text{padding:10px 12px;background:#F5F9FE;border-radius:12px;margin:6px 0;
- font-size:12px;color:#2E5C8A;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-.board-wrap{display:flex;justify-content:center;margin:6px 0}
+.sub{font-size:11.5px;color:#6E86A0;margin-bottom:4px;line-height:1.35;flex-shrink:0}
+#scorebar{display:none;justify-content:space-between;gap:6px;padding:6px 10px;background:#F5F9FE;
+ border-radius:10px;margin:4px 0 6px;font-size:11px;color:#2E5C8A;flex-shrink:0}
+#scorebar.on{display:flex}
+#scorebar b{color:#0F2440}
+.content{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.content.center{justify-content:center;align-items:center;text-align:center}
+.board-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px 0}
 .board{display:grid;gap:2px;background:#D8E4F0;padding:4px;border-radius:10px;
  box-shadow:inset 0 0 0 2px #B8CCE0}
 .cell{display:flex;align-items:center;justify-content:center;border:0;border-radius:3px;
- font-weight:800;cursor:default;padding:0;font-family:inherit;color:#0F2440;font-size:14px}
+ font-weight:800;cursor:default;padding:0;font-family:inherit;color:#0F2440;
+ font-size:min(20px,4vh);overflow:hidden;user-select:none;line-height:1}
 .cell.hidden{background:linear-gradient(180deg,#8FB3D4,#6E9AC9);cursor:pointer;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}
 .cell.hidden:active{filter:brightness(.9)}
@@ -197,54 +198,88 @@ body{height:100%;padding:6px;box-sizing:border-box;display:flex;
 .cell.piece-T{background:#9932CC}.cell.piece-S{background:#32CD32}
 .cell.piece-Z{background:#FF4500}.cell.piece-J{background:#1E90FF}
 .cell.piece-L{background:#FF8C00}
-.score{display:flex;justify-content:space-between;gap:6px;padding:7px 10px;background:#F5F9FE;
- border-radius:10px;margin:4px 0;font-size:11px;color:#2E5C8A}
-.score b{color:#0F2440}
-.reels{display:flex;justify-content:center;gap:8px;margin:8px 0;padding:12px;background:#0F2440;border-radius:14px}
-.reel{width:60px;height:70px;display:flex;align-items:center;justify-content:center;
- background:#fff;border-radius:10px;font-size:34px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.1)}
-.controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-top:6px}
-.controls .btn{height:44px;font-size:17px;padding:0}
-.fish-box{display:flex;justify-content:center;align-items:center;padding:20px 0;font-size:64px}
-</style></head><body><div class="wrap" id="wrap">
+.text{padding:10px 12px;background:#F5F9FE;border-radius:12px;margin:4px 0;
+ font-size:12px;color:#2E5C8A;line-height:1.5;white-space:pre-wrap;
+ word-break:break-word;flex-shrink:0;max-width:100%}
+.reels{flex:1;min-height:0;display:flex;justify-content:center;gap:10px;padding:14px;
+ background:linear-gradient(180deg,#0F2440,#1a3a5e);border-radius:16px;margin:4px 0}
+.reel{flex:1;max-width:110px;display:flex;align-items:center;justify-content:center;
+ background:#fff;border-radius:12px;font-size:min(56px,8vh);box-shadow:inset 0 -4px 0 rgba(0,0,0,.1)}
+.controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin:6px 0;flex-shrink:0}
+.controls .btn{height:48px;font-size:20px;padding:0}
+.fish-box{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+ font-size:min(180px,26vh);line-height:1}
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;flex-shrink:0}
+.btn{display:flex;align-items:center;justify-content:center;height:46px;border:0;border-radius:999px;
+ background:#EAF2FB;color:#2E5C8A;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;
+ padding:0 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);transition:transform .12s,filter .2s}
+.btn.primary{background:linear-gradient(180deg,#3A93E0,#217ECE);color:#fff;
+ box-shadow:0 6px 16px rgba(33,126,206,.32)}
+.btn.wide{grid-column:1/-1}
+.btn:active{transform:scale(.97)}
+</style></head><body><div class="wrap">
 <div class="brand">PIKGAME</div>
 <div class="title" id="title">Загрузка</div>
 <div class="sub" id="sub"></div>
+<div id="scorebar"></div>
 <div class="content" id="content"></div>
 <div class="buttons" id="buttons"></div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
 function buzz(){try{TelegramWidget.HapticFeedback.impactOccurred('light')}catch(e){}}
-async function req(a){buzz();try{let r=await TelegramWidget.request(a);
-  if(r&&r.result){let d=JSON.parse(r.result);render(d)}}
-  catch(e){try{TelegramWidget.HapticFeedback.notificationOccurred('error')}catch(_){}}}
+async function req(a){buzz();try{
+  let r=await TelegramWidget.request(a);
+  if(r&&r.result){let d=JSON.parse(r.result);render(d)}
+}catch(e){try{TelegramWidget.HapticFeedback.notificationOccurred('error')}catch(_){}}}
 
 function render(d){
   $('title').textContent=d.title||'';
   $('sub').textContent=d.sub||'';
-  const c=$('content');c.innerHTML='';
+  const sb=$('scorebar');sb.innerHTML='';sb.classList.remove('on');
   if(d.scorebar&&d.scorebar.length){
-    let bar=document.createElement('div');bar.className='score';
-    d.scorebar.forEach(i=>{let s=document.createElement('span');s.innerHTML=i.label+' <b>'+i.value+'</b>';bar.appendChild(s)});
-    c.appendChild(bar);
-  }
-  if(d.game==='minesweeper')c.appendChild(drawMinesweeper(d));
-  else if(d.game==='snake')c.appendChild(drawSnake(d));
-  else if(d.game==='fishing')c.appendChild(drawFishing(d));
-  else if(d.game==='casino777')c.appendChild(drawCasino(d));
-  else if(d.game==='tetris')c.appendChild(drawTetris(d));
-  if(d.text){let t=document.createElement('div');t.className='text';t.textContent=d.text;c.appendChild(t)}
-  if(d.controls){let ct=document.createElement('div');ct.className='controls';c.appendChild(ct)}
-  renderButtons(d.buttons||[]);
-  if(d.controls_grid){
-    const gridEl=c.querySelector('.controls');
-    if(gridEl)d.controls_grid.forEach(b=>{
-      let el=document.createElement('button');el.className='btn';el.textContent=b.label;
-      el.onclick=()=>req(b.action);gridEl.appendChild(el)
+    sb.classList.add('on');
+    d.scorebar.forEach(i=>{
+      let s=document.createElement('span');
+      s.innerHTML=i.label+' <b>'+i.value+'</b>';
+      sb.appendChild(s);
     });
   }
+  const c=$('content');c.innerHTML='';c.className='content';
+  if(!d.game)c.classList.add('center');
+  if(d.game==='minesweeper')c.appendChild(drawMinesweeper(d));
+  else if(d.game==='snake')c.appendChild(drawSnake(d));
+  else if(d.game==='tetris')c.appendChild(drawTetris(d));
+  else if(d.game==='fishing')c.appendChild(drawFishing(d));
+  else if(d.game==='casino777')c.appendChild(drawCasino(d));
+  if(d.text){let t=document.createElement('div');t.className='text';t.textContent=d.text;c.appendChild(t)}
+  if(d.controls_grid&&d.controls_grid.length){
+    let ct=document.createElement('div');ct.className='controls';
+    d.controls_grid.forEach(b=>{
+      let el=document.createElement('button');el.className='btn';el.textContent=b.label;
+      el.onclick=()=>req(b.action);ct.appendChild(el);
+    });
+    c.appendChild(ct);
+  }
+  renderButtons(d.buttons||[]);
+  requestAnimationFrame(layoutBoard);
 }
+
+function layoutBoard(){
+  const wrap=document.querySelector('.board-wrap');
+  if(!wrap)return;
+  const board=wrap.querySelector('.board');
+  if(!board)return;
+  const W=wrap.clientWidth-8;
+  const H=wrap.clientHeight-8;
+  if(W<=0||H<=0)return;
+  const ratio=parseFloat(board.dataset.ratio||'1');
+  let w=W,h=W/ratio;
+  if(h>H){h=H;w=H*ratio}
+  board.style.width=Math.max(60,Math.floor(w))+'px';
+  board.style.height=Math.max(60,Math.floor(h))+'px';
+}
+window.addEventListener('resize',layoutBoard);
 
 function renderButtons(btns){
   const box=$('buttons');box.innerHTML='';
@@ -253,19 +288,18 @@ function renderButtons(btns){
   btns.forEach(b=>{
     let el=document.createElement('button');
     el.className='btn '+(b.primary?'primary ':'')+(b.wide?'wide ':'');
-    el.textContent=b.label;el.onclick=()=>req(b.action);box.appendChild(el)
+    el.textContent=b.label;el.onclick=()=>req(b.action);box.appendChild(el);
   });
 }
 
 function drawMinesweeper(d){
-  let cs=d.cell||30,size=d.size;
-  let wrap=document.createElement('div');wrap.className='board-wrap';
-  let g=document.createElement('div');g.className='board';
-  g.style.gridTemplateColumns='repeat('+size+','+cs+'px)';
-  for(let r=0;r<size;r++)for(let c=0;c<size;c++){
-    let ch=d.board[r*size+c];let el=document.createElement('button');
-    el.className='cell';el.style.width=cs+'px';el.style.height=cs+'px';
-    el.style.fontSize=Math.floor(cs*0.5)+'px';
+  const wrap=document.createElement('div');wrap.className='board-wrap';
+  const g=document.createElement('div');g.className='board';g.dataset.ratio='1';
+  g.style.gridTemplateColumns='repeat('+d.size+', 1fr)';
+  g.style.gridTemplateRows='repeat('+d.size+', 1fr)';
+  for(let r=0;r<d.size;r++)for(let c=0;c<d.size;c++){
+    const ch=d.board[r*d.size+c];
+    const el=document.createElement('button');el.className='cell';
     if(ch==='H'){el.classList.add('hidden');el.onclick=()=>req('ms:r:'+r+':'+c)}
     else if(ch==='F'){el.classList.add('hidden','flag');el.textContent='🚩';el.onclick=()=>req('ms:r:'+r+':'+c)}
     else if(ch==='X'){el.classList.add('mine');el.textContent='💣'}
@@ -278,13 +312,13 @@ function drawMinesweeper(d){
 }
 
 function drawSnake(d){
-  let cs=d.cell||18,size=d.size;
-  let wrap=document.createElement('div');wrap.className='board-wrap';
-  let g=document.createElement('div');g.className='board';
-  g.style.gridTemplateColumns='repeat('+size+','+cs+'px)';
-  for(let i=0;i<size*size;i++){
-    let ch=d.board[i];let el=document.createElement('div');
-    el.className='cell';el.style.width=cs+'px';el.style.height=cs+'px';
+  const wrap=document.createElement('div');wrap.className='board-wrap';
+  const g=document.createElement('div');g.className='board';g.dataset.ratio='1';
+  g.style.gridTemplateColumns='repeat('+d.size+', 1fr)';
+  g.style.gridTemplateRows='repeat('+d.size+', 1fr)';
+  for(let i=0;i<d.size*d.size;i++){
+    const ch=d.board[i];
+    const el=document.createElement('div');el.className='cell';
     if(ch==='H')el.classList.add('snake-head');
     else if(ch==='S')el.classList.add('snake-body');
     else if(ch==='F')el.classList.add('food');
@@ -294,28 +328,15 @@ function drawSnake(d){
   wrap.appendChild(g);return wrap;
 }
 
-function drawFishing(d){
-  let box=document.createElement('div');box.className='fish-box';
-  box.textContent=d.emoji||'🎣';return box;
-}
-
-function drawCasino(d){
-  let box=document.createElement('div');box.className='reels';
-  for(let i=0;i<3;i++){
-    let el=document.createElement('div');el.className='reel';
-    el.textContent=(d.reels&&d.reels[i])||'❓';box.appendChild(el)
-  }
-  return box;
-}
-
 function drawTetris(d){
-  let cs=d.cell||16,w=d.width,h=d.height;
-  let wrap=document.createElement('div');wrap.className='board-wrap';
-  let g=document.createElement('div');g.className='board';
-  g.style.gridTemplateColumns='repeat('+w+','+cs+'px)';
-  for(let i=0;i<w*h;i++){
-    let ch=d.board[i];let el=document.createElement('div');
-    el.className='cell';el.style.width=cs+'px';el.style.height=cs+'px';
+  const wrap=document.createElement('div');wrap.className='board-wrap';
+  const g=document.createElement('div');g.className='board';
+  g.dataset.ratio=(d.width/d.height).toString();
+  g.style.gridTemplateColumns='repeat('+d.width+', 1fr)';
+  g.style.gridTemplateRows='repeat('+d.height+', 1fr)';
+  for(let i=0;i<d.width*d.height;i++){
+    const ch=d.board[i];
+    const el=document.createElement('div');el.className='cell';
     if(ch==='.')el.classList.add('revealed');
     else el.classList.add('piece-'+ch);
     g.appendChild(el);
@@ -323,12 +344,26 @@ function drawTetris(d){
   wrap.appendChild(g);return wrap;
 }
 
+function drawFishing(d){
+  const box=document.createElement('div');box.className='fish-box';
+  box.textContent=d.emoji||'🎣';return box;
+}
+
+function drawCasino(d){
+  const box=document.createElement('div');box.className='reels';
+  for(let i=0;i<3;i++){
+    let el=document.createElement('div');el.className='reel';
+    el.textContent=(d.reels&&d.reels[i])||'❓';box.appendChild(el);
+  }
+  return box;
+}
+
 (async function(){
   try{
     let cd=(TelegramWidget.chatData||'menu');
     let r=await TelegramWidget.request('init:'+cd);
     if(r&&r.result)render(JSON.parse(r.result));
-    TelegramWidget.ready()
+    TelegramWidget.ready();
   }catch(e){
     $('title').textContent='Ошибка';
     $('sub').textContent=(e&&e.message)||String(e);
@@ -426,7 +461,7 @@ def ms_render(st):
     text = {'won': '🏆 Поле очищено!', 'lost': '💥 Мина. Попробуйте снова.',
             'playing': 'Нажимайте на клетки. 🚩 ставится повторным тапом.'}[st['status']]
     return {
-        'game': 'minesweeper', 'size': MS_SIZE, 'cell': 30,
+        'game': 'minesweeper', 'size': MS_SIZE,
         'board': ms_encode(st), 'status': st['status'],
         'title': '💣 Сапёр', 'sub': f'{MS_SIZE}×{MS_SIZE} · {MS_MINES} мин',
         'scorebar': [{'label': 'Статус',
@@ -505,13 +540,13 @@ def sn_render(st):
         btn('➡️', 'sn:dir:R'), btn('⬇️', 'sn:dir:D'),
     ] if st['status'] == 'playing' else []
     return {
-        'game': 'snake', 'size': SN_SIZE, 'cell': 18,
+        'game': 'snake', 'size': SN_SIZE,
         'board': sn_encode(st), 'status': st['status'],
         'title': '🐍 Змейка', 'sub': f'Поле {SN_SIZE}×{SN_SIZE}',
         'scorebar': [{'label': 'Счёт', 'value': st['score']},
                      {'label': 'Длина', 'value': len(st['snake'])}],
         'text': text,
-        'controls': True, 'controls_grid': controls,
+        'controls_grid': controls,
         'buttons': [
             btn('🔄 Новая игра', 'sn:restart', True, True),
             btn('← В меню', 'menu', wide=True),
@@ -704,13 +739,13 @@ def tt_render(st):
         btn('⬇️', 'tt:drop'),  btn('➡️', 'tt:right'),
     ] if st['status'] == 'playing' else []
     return {
-        'game': 'tetris', 'width': TT_W, 'height': TT_H, 'cell': 14,
+        'game': 'tetris', 'width': TT_W, 'height': TT_H,
         'board': tt_encode(st), 'status': st['status'],
         'title': '🧱 Тетрис', 'sub': f'{TT_W}×{TT_H}',
         'scorebar': [{'label': 'Счёт', 'value': st['score']},
                      {'label': 'Линии', 'value': st['lines']}],
         'text': text,
-        'controls': True, 'controls_grid': controls,
+        'controls_grid': controls,
         'buttons': [
             btn('🔄 Новая игра', 'tt:restart', True, True),
             btn('← В меню', 'menu', wide=True),
@@ -798,7 +833,7 @@ async def widget_action(upd):
         elif data.startswith('tt:'):
             out = tt_handle(uid, data)
         elif data == 'show:rating':
-            out = {'view': 'rating', 'title': '📊 Рейтинг',
+            out = {'title': '📊 Рейтинг',
                    'sub': 'Выберите игру, чтобы открыть таблицу в чате',
                    'text': 'Отправьте /reit — рейтинг всех игр,\n'
                            '/reit snake, /reit minesweeper, /reit fishing,\n'
