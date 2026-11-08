@@ -23,8 +23,8 @@ session = None
 offset = 0
 GAME_STATES: dict = {}
 
-MS_SIZE, MS_MINES = 12, 20      # чуть крупнее, чтобы заполнить экран
-SN_SIZE = 16
+MS_SIZE, MS_MINES = 10, 15
+SN_SIZE = 15
 TT_W, TT_H = 10, 20
 
 SLOT_SYMBOLS = ['🍒', '🍋', '🍊', '🍇', '🔔', '⭐', '7️⃣', '💎']
@@ -126,58 +126,59 @@ async def answer_widget(qid, payload):
     except Exception: logging.exception("answerWidgetQuery failed")
 
 async def send_game_widget(chat_id, chat_data='menu'):
+    # ⬇️ ВАЖНО: height не больше ~640, иначе Telegram масштабирует виджет вниз
     return await api('sendWidget', {
         'chat_id': chat_id, 'html': GAME_WIDGET_HTML,
-        'width': 400, 'height': 900,
+        'width': 360, 'height': 640,
         'allow_queries': True, 'chat_data': chat_data
     })
 
 # ============================================================
-#  Widget HTML — на весь экран
+#  Widget HTML — fills viewport 1:1
 # ============================================================
 GAME_WIDGET_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html{
-  height:100%;height:100vh;height:100dvh;
-  width:100%;width:100vw;width:100dvw;
-  overflow:hidden;
-}
+html,body{width:100%;height:100%;overflow:hidden}
 body{
-  height:100%;height:100vh;height:100dvh;
-  width:100%;width:100vw;width:100dvw;
-  overflow:hidden;
+  position:fixed;inset:0;
   padding:6px;
   display:flex;
   background:linear-gradient(165deg,#AECFE9,#82AEDB 55%,#6E9AC9);
-  background-attachment:fixed;
   color:#0F2440;
   font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   font-size:14px;font-weight:600;-webkit-font-smoothing:antialiased;
 }
 .wrap{
-  flex:1;min-width:0;min-height:0;
+  flex:1 1 auto;min-width:0;min-height:0;
   display:flex;flex-direction:column;
-  background:#fff;border-radius:22px;
-  padding:12px 12px 6px;
+  background:#fff;border-radius:20px;
+  padding:10px 10px 6px;
   box-shadow:0 20px 44px rgba(30,64,120,.22),0 3px 10px rgba(30,64,120,.10);
+  overflow:hidden;
 }
-.brand{font-size:10px;font-weight:800;letter-spacing:2px;color:#6E9AC9;text-transform:uppercase;flex-shrink:0}
-.title{font-size:20px;font-weight:900;letter-spacing:-.4px;margin:4px 0 2px;color:#0F2440;flex-shrink:0}
-.sub{font-size:12px;color:#6E86A0;margin-bottom:6px;line-height:1.35;flex-shrink:0}
-#scorebar{display:none;justify-content:space-between;gap:6px;padding:8px 12px;background:#F5F9FE;
- border-radius:12px;margin:4px 0 6px;font-size:12px;color:#2E5C8A;flex-shrink:0}
+.brand{font-size:clamp(8px,2.6vw,11px);font-weight:800;letter-spacing:2px;
+ color:#6E9AC9;text-transform:uppercase;flex-shrink:0}
+.title{font-size:clamp(15px,5vw,20px);font-weight:900;letter-spacing:-.4px;
+ color:#0F2440;margin:3px 0 1px;flex-shrink:0;line-height:1.15}
+.sub{font-size:clamp(10px,3.2vw,12px);color:#6E86A0;line-height:1.35;
+ margin-bottom:4px;flex-shrink:0}
+#scorebar{display:none;justify-content:space-between;gap:6px;
+ padding:6px 10px;background:#F5F9FE;border-radius:10px;margin:4px 0 5px;
+ font-size:clamp(9px,2.9vw,11px);color:#2E5C8A;flex-shrink:0}
 #scorebar.on{display:flex}
 #scorebar b{color:#0F2440}
-.content{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;gap:6px}
+.content{flex:1 1 0;min-height:0;display:flex;flex-direction:column;
+ overflow:hidden;gap:5px}
 .content.center{justify-content:center;align-items:stretch;text-align:center}
-.board-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:2px}
-.board{display:grid;gap:2px;background:#D8E4F0;padding:4px;border-radius:12px;
+.board-wrap{flex:1 1 0;min-height:0;display:flex;align-items:center;
+ justify-content:center;padding:2px;position:relative}
+.board{display:grid;gap:2px;background:#D8E4F0;padding:4px;border-radius:10px;
  box-shadow:inset 0 0 0 2px #B8CCE0}
 .cell{display:flex;align-items:center;justify-content:center;border:0;border-radius:3px;
  font-weight:800;cursor:default;padding:0;font-family:inherit;color:#0F2440;
- font-size:14px;overflow:hidden;user-select:none;line-height:1}
+ font-size:inherit;overflow:hidden;user-select:none;line-height:1}
 .cell.hidden{background:linear-gradient(180deg,#8FB3D4,#6E9AC9);cursor:pointer;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}
 .cell.hidden:active{filter:brightness(.9)}
@@ -191,43 +192,38 @@ body{
 .cell.piece-T{background:#9932CC}.cell.piece-S{background:#32CD32}
 .cell.piece-Z{background:#FF4500}.cell.piece-J{background:#1E90FF}
 .cell.piece-L{background:#FF8C00}
-.text{padding:10px 14px;background:#F5F9FE;border-radius:12px;
- font-size:13px;color:#2E5C8A;line-height:1.5;white-space:pre-wrap;
- word-break:break-word;flex-shrink:0}
-.reels{flex:1;min-height:0;display:flex;justify-content:center;gap:10px;padding:14px;
- background:linear-gradient(180deg,#0F2440,#1a3a5e);border-radius:16px}
+.text{padding:7px 10px;background:#F5F9FE;border-radius:10px;
+ font-size:clamp(10px,3vw,12px);color:#2E5C8A;line-height:1.45;
+ white-space:pre-wrap;word-break:break-word;flex-shrink:0}
+.reels{flex:1 1 0;min-height:0;display:flex;justify-content:center;gap:8px;
+ padding:10px;background:linear-gradient(180deg,#0F2440,#1a3a5e);border-radius:14px}
 .reel{flex:1;max-width:120px;display:flex;align-items:center;justify-content:center;
- background:#fff;border-radius:14px;font-size:min(64px,9vh);box-shadow:inset 0 -4px 0 rgba(0,0,0,.1)}
-.controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;flex-shrink:0}
-.controls .btn{height:52px;font-size:22px;padding:0}
-.fish-box{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
- font-size:min(220px,32vh);line-height:1}
-.menu-grid{
-  flex:1;min-height:0;
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  grid-template-rows:1fr 1fr 1fr;
-  gap:8px;
-}
-.menu-card{
-  background:#F5F9FE;border:0;border-radius:18px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:6px;cursor:pointer;padding:8px;font-family:inherit;
-  box-shadow:inset 0 0 0 2px #E1EAF5;
-  transition:transform .12s,filter .2s;
-  min-height:0;min-width:0;
-}
+ background:#fff;border-radius:12px;font-size:clamp(28px,10vh,64px);
+ box-shadow:inset 0 -4px 0 rgba(0,0,0,.1)}
+.controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;flex-shrink:0}
+.controls .btn{height:clamp(40px,8vh,54px);font-size:clamp(15px,4.5vw,22px);padding:0}
+.fish-box{flex:1 1 0;min-height:0;display:flex;align-items:center;
+ justify-content:center;font-size:clamp(80px,32vh,220px);line-height:1}
+.menu-grid{flex:1 1 0;min-height:0;display:grid;
+ grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr;gap:6px}
+.menu-card{background:#F5F9FE;border:0;border-radius:16px;
+ display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:4px;cursor:pointer;padding:6px;font-family:inherit;
+ box-shadow:inset 0 0 0 2px #E1EAF5;min-height:0;min-width:0;
+ transition:transform .12s,filter .2s}
 .menu-card:active{transform:scale(.96);filter:brightness(.97)}
-.menu-card.primary{
-  background:linear-gradient(180deg,#E8F2FC,#D8E8F9);
-  box-shadow:inset 0 0 0 2px #C5DAF0,0 4px 12px rgba(33,126,206,.10);
-}
-.menu-emoji{font-size:min(44px,6.5vh);line-height:1}
-.menu-name{font-size:13px;font-weight:800;color:#2E5C8A;letter-spacing:-.1px}
-.buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;flex-shrink:0}
-.btn{display:flex;align-items:center;justify-content:center;height:48px;border:0;border-radius:999px;
- background:#EAF2FB;color:#2E5C8A;font-family:inherit;font-size:13.5px;font-weight:800;
- cursor:pointer;padding:0 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
+.menu-card.primary{background:linear-gradient(180deg,#E8F2FC,#D8E8F9);
+ box-shadow:inset 0 0 0 2px #C5DAF0,0 4px 12px rgba(33,126,206,.10)}
+.menu-emoji{font-size:clamp(28px,10vh,60px);line-height:1}
+.menu-name{font-size:clamp(11px,3.4vw,14px);font-weight:800;
+ color:#2E5C8A;letter-spacing:-.1px}
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:5px;
+ margin-top:5px;flex-shrink:0}
+.btn{display:flex;align-items:center;justify-content:center;
+ height:clamp(38px,8vh,50px);border:0;border-radius:999px;
+ background:#EAF2FB;color:#2E5C8A;font-family:inherit;
+ font-size:clamp(11px,3.4vw,14px);font-weight:800;cursor:pointer;
+ padding:0 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
  transition:transform .12s,filter .2s}
 .btn.primary{background:linear-gradient(180deg,#3A93E0,#217ECE);color:#fff;
  box-shadow:0 6px 16px rgba(33,126,206,.32)}
@@ -244,36 +240,32 @@ body{
 <script>
 const $=id=>document.getElementById(id);
 
-function forceFullHeight(){
-  const h=window.innerHeight||window.visualViewport&&window.visualViewport.height;
-  if(h>100){
-    document.documentElement.style.height=h+'px';
-    document.body.style.height=h+'px';
-  }
-}
-forceFullHeight();
-window.addEventListener('resize',forceFullHeight);
-window.addEventListener('orientationchange',()=>setTimeout(forceFullHeight,100));
-if(window.visualViewport)window.visualViewport.addEventListener('resize',forceFullHeight);
-
 function layoutBoard(){
   const wrap=document.querySelector('.board-wrap');
   if(!wrap)return;
   const board=wrap.querySelector('.board');
   if(!board)return;
-  const W=wrap.clientWidth,H=wrap.clientHeight;
-  if(W<=0||H<=0)return;
+  const rect=wrap.getBoundingClientRect();
+  const W=rect.width-6;
+  const H=rect.height-6;
+  if(W<20||H<20)return;
   const ratio=parseFloat(board.dataset.ratio||'1');
-  let w,h;
-  if(W/H>ratio){h=H;w=H*ratio}else{w=W;h=W/ratio}
-  board.style.width=Math.floor(w)+'px';
-  board.style.height=Math.floor(h)+'px';
+  let width=W,height=W/ratio;
+  if(height>H){height=H;width=H*ratio}
+  board.style.width=Math.floor(width)+'px';
+  board.style.height=Math.floor(height)+'px';
 }
-window.addEventListener('resize',layoutBoard);
+function relayout(){
+  layoutBoard();
+  requestAnimationFrame(layoutBoard);
+  setTimeout(layoutBoard,50);
+  setTimeout(layoutBoard,200);
+  setTimeout(layoutBoard,500);
+}
+window.addEventListener('resize',relayout);
+window.addEventListener('orientationchange',()=>setTimeout(relayout,200));
 if(window.ResizeObserver){
-  const ro=new ResizeObserver(()=>layoutBoard());
-  const observeContent=()=>{const c=$('content');if(c)ro.observe(c)};
-  setTimeout(observeContent,100);
+  try{new ResizeObserver(relayout).observe($('content'))}catch(e){}
 }
 
 function buzz(){try{TelegramWidget.HapticFeedback.impactOccurred('light')}catch(e){}}
@@ -295,9 +287,8 @@ function render(d){
     });
   }
   const c=$('content');c.innerHTML='';c.className='content';
-  if(d.games){
-    c.appendChild(drawMenu(d));
-  } else {
+  if(d.games){ c.appendChild(drawMenu(d)); }
+  else {
     if(!d.game)c.classList.add('center');
     if(d.game==='minesweeper')c.appendChild(drawMinesweeper(d));
     else if(d.game==='snake')c.appendChild(drawSnake(d));
@@ -319,9 +310,7 @@ function render(d){
     }
   }
   renderButtons(d.buttons||[]);
-  requestAnimationFrame(layoutBoard);
-  setTimeout(layoutBoard,50);
-  setTimeout(layoutBoard,200);
+  relayout();
 }
 
 function renderButtons(btns){
@@ -354,10 +343,10 @@ function drawMinesweeper(d){
   const g=document.createElement('div');g.className='board';g.dataset.ratio='1';
   g.style.gridTemplateColumns='repeat('+d.size+', 1fr)';
   g.style.gridTemplateRows='repeat('+d.size+', 1fr)';
+  g.style.fontSize='clamp(9px,2vh,18px)';
   for(let r=0;r<d.size;r++)for(let c=0;c<d.size;c++){
     const ch=d.board[r*d.size+c];
     const el=document.createElement('button');el.className='cell';
-    el.style.fontSize='min(20px, 2.5vh)';
     if(ch==='H'){el.classList.add('hidden');el.onclick=()=>req('ms:r:'+r+':'+c)}
     else if(ch==='F'){el.classList.add('hidden','flag');el.textContent='🚩';el.onclick=()=>req('ms:r:'+r+':'+c)}
     else if(ch==='X'){el.classList.add('mine');el.textContent='💣'}
@@ -418,11 +407,11 @@ function drawCasino(d){
 
 (async function(){
   try{
-    forceFullHeight();
     let cd=(TelegramWidget.chatData||'menu');
     let r=await TelegramWidget.request('init:'+cd);
     if(r&&r.result)render(JSON.parse(r.result));
     TelegramWidget.ready();
+    setTimeout(relayout,300);
   }catch(e){
     $('title').textContent='Ошибка';
     $('sub').textContent=(e&&e.message)||String(e);
@@ -431,7 +420,7 @@ function drawCasino(d){
 </script></body></html>"""
 
 # ============================================================
-#  UI helpers
+#  UI
 # ============================================================
 def btn(label, action, primary=False, wide=False):
     return {'label': label, 'action': action, 'primary': primary, 'wide': wide}
@@ -456,8 +445,7 @@ def menu_view(uid):
 def ms_init():
     board = [[0]*MS_SIZE for _ in range(MS_SIZE)]
     cells = [(r, c) for r in range(MS_SIZE) for c in range(MS_SIZE)]
-    for r, c in random.sample(cells, MS_MINES):
-        board[r][c] = -1
+    for r, c in random.sample(cells, MS_MINES): board[r][c] = -1
     for r, c in [(r, c) for r in range(MS_SIZE) for c in range(MS_SIZE) if board[r][c] == -1]:
         for dr in (-1, 0, 1):
             for dc in (-1, 0, 1):
@@ -511,10 +499,8 @@ def ms_render(st):
         'scorebar': [{'label': 'Статус',
                       'value': {'playing': 'В игре', 'won': 'Победа', 'lost': 'Проигрыш'}[st['status']]}],
         'text': text,
-        'buttons': [
-            btn('🔄 Новая игра', 'ms:restart', True, True),
-            btn('← В меню', 'menu', wide=True),
-        ]
+        'buttons': [btn('🔄 Новая игра', 'ms:restart', True, True),
+                    btn('← В меню', 'menu', wide=True)]
     }
 
 def ms_handle(uid, data):
@@ -582,10 +568,8 @@ def sn_render(st):
         'scorebar': [{'label': 'Счёт', 'value': st['score']},
                      {'label': 'Длина', 'value': len(st['snake'])}],
         'text': text, 'controls_grid': controls,
-        'buttons': [
-            btn('🔄 Новая игра', 'sn:restart', True, True),
-            btn('← В меню', 'menu', wide=True),
-        ]
+        'buttons': [btn('🔄 Новая игра', 'sn:restart', True, True),
+                    btn('← В меню', 'menu', wide=True)]
     }
 
 def sn_handle(uid, data):
@@ -627,11 +611,9 @@ def fi_render(st):
         'scorebar': [{'label': 'Всего очков', 'value': st['total']},
                      {'label': 'Забросов', 'value': st['casts']}],
         'text': text,
-        'buttons': [
-            btn('🎣 Заброс', 'fi:cast', True, True),
-            btn('🔄 Сброс', 'fi:restart'),
-            btn('← В меню', 'menu'),
-        ]
+        'buttons': [btn('🎣 Заброс', 'fi:cast', True, True),
+                    btn('🔄 Сброс', 'fi:restart'),
+                    btn('← В меню', 'menu')]
     }
 
 def fi_handle(uid, data):
@@ -669,7 +651,7 @@ def ca_render(st, uid):
         'buttons': [
             btn('🎰 Крутить', 'ca:spin', True, True) if coins >= SLOT_BET else
                 btn('💎 Пополнить (+1000)', 'ca:refill', True, True),
-            btn('← В меню', 'menu', wide=True),
+            btn('← В меню', 'menu', wide=True)
         ]
     }
 
@@ -760,10 +742,8 @@ def tt_render(st):
         'scorebar': [{'label': 'Счёт', 'value': st['score']},
                      {'label': 'Линии', 'value': st['lines']}],
         'text': text, 'controls_grid': controls,
-        'buttons': [
-            btn('🔄 Новая игра', 'tt:restart', True, True),
-            btn('← В меню', 'menu', wide=True),
-        ]
+        'buttons': [btn('🔄 Новая игра', 'tt:restart', True, True),
+                    btn('← В меню', 'menu', wide=True)]
     }
 
 def tt_handle(uid, data):
@@ -792,7 +772,7 @@ def tt_handle(uid, data):
     return tt_render(st)
 
 # ============================================================
-#  Widget action dispatcher
+#  Dispatcher
 # ============================================================
 def start_game(uid, game):
     if game == 'minesweeper':
@@ -819,10 +799,8 @@ async def widget_action(upd):
         if data.startswith('init:'):
             target = data[5:]
             out = start_game(uid, target[5:]) if target.startswith('game:') else menu_view(uid)
-        elif data == 'menu':
-            GAME_STATES.pop(uid, None); out = menu_view(uid)
-        elif data.startswith('start:'):
-            out = start_game(uid, data.split(':', 1)[1])
+        elif data == 'menu': GAME_STATES.pop(uid, None); out = menu_view(uid)
+        elif data.startswith('start:'): out = start_game(uid, data.split(':', 1)[1])
         elif data.startswith('ms:'): out = ms_handle(uid, data)
         elif data.startswith('sn:'): out = sn_handle(uid, data)
         elif data.startswith('fi:'): out = fi_handle(uid, data)
@@ -941,12 +919,9 @@ async def handle_text(m):
         parts = text.split(maxsplit=1)
         if len(parts) > 1:
             game = parts[1].strip().lower()
-            if game in GAME_NAMES:
-                await send_game_widget(chat_id, chat_data=f'game:{game}')
-            else:
-                await send_message(chat_id, f"Игра не найдена. Доступно: {', '.join(GAME_NAMES)}")
-        else:
-            await send_game_widget(chat_id, chat_data='menu')
+            if game in GAME_NAMES: await send_game_widget(chat_id, chat_data=f'game:{game}')
+            else: await send_message(chat_id, f"Игра не найдена. Доступно: {', '.join(GAME_NAMES)}")
+        else: await send_game_widget(chat_id, chat_data='menu')
         return
 
     if text.startswith('/reit'):
@@ -960,8 +935,7 @@ async def handle_text(m):
         if uid not in ADMINS: await send_message(chat_id, "Нет доступа."); return
         await send_message(chat_id, build_stats()); return
 
-    if text.startswith('/cancel'):
-        await send_message(chat_id, "Ок."); return
+    if text.startswith('/cancel'): await send_message(chat_id, "Ок.")
 
 # ============================================================
 #  Polling
@@ -991,8 +965,7 @@ async def main():
         me = await api('getMe')
         logging.info("PikGame started: @%s", me.get('username'))
         await poll()
-    finally:
-        await session.close()
+    finally: await session.close()
 
 if __name__ == '__main__':
     asyncio.run(main())
