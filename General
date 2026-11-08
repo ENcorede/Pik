@@ -23,8 +23,8 @@ session = None
 offset = 0
 GAME_STATES: dict = {}
 
-MS_SIZE, MS_MINES = 9, 10
-SN_SIZE = 15
+MS_SIZE, MS_MINES = 12, 20      # чуть крупнее, чтобы заполнить экран
+SN_SIZE = 16
 TT_W, TT_H = 10, 20
 
 SLOT_SYMBOLS = ['🍒', '🍋', '🍊', '🍇', '🔔', '⭐', '7️⃣', '💎']
@@ -56,15 +56,10 @@ GAME_NAMES = {
 #  DB
 # ============================================================
 def db():
-    c = sqlite3.connect(DB_FILE)
-    c.row_factory = sqlite3.Row
-    return c
+    c = sqlite3.connect(DB_FILE); c.row_factory = sqlite3.Row; return c
 
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
-
-def fmt(n):
-    return f"{int(n):,}".replace(',', ' ')
+def now_iso(): return datetime.now(timezone.utc).isoformat()
+def fmt(n): return f"{int(n):,}".replace(',', ' ')
 
 def init_db():
     with db() as c:
@@ -93,16 +88,13 @@ def ensure_user(u):
         c.execute("""INSERT INTO users(user_id,username,first_name,created_at) VALUES(?,?,?,?)
         ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, first_name=excluded.first_name""",
             (u['id'], u.get('username'), u.get('first_name'), now_iso()))
-        c.execute("INSERT OR IGNORE INTO game_stats(user_id) VALUES(?)", (u['id'],))
-        c.commit()
+        c.execute("INSERT OR IGNORE INTO game_stats(user_id) VALUES(?)", (u['id'],)); c.commit()
 
 def bump(uid, field, value, mode='add'):
     ensure_user({'id': uid})
     with db() as c:
-        if mode == 'add':
-            c.execute(f"UPDATE game_stats SET {field}={field}+? WHERE user_id=?", (value, uid))
-        elif mode == 'max':
-            c.execute(f"UPDATE game_stats SET {field}=MAX({field},?) WHERE user_id=?", (value, uid))
+        if mode == 'add': c.execute(f"UPDATE game_stats SET {field}={field}+? WHERE user_id=?", (value, uid))
+        elif mode == 'max': c.execute(f"UPDATE game_stats SET {field}=MAX({field},?) WHERE user_id=?", (value, uid))
         c.commit()
 
 def get_coins(uid):
@@ -112,8 +104,7 @@ def get_coins(uid):
 
 def set_coins(uid, v):
     with db() as c:
-        c.execute("UPDATE users SET casino_coins=? WHERE user_id=?", (v, uid))
-        c.commit()
+        c.execute("UPDATE users SET casino_coins=? WHERE user_id=?", (v, uid)); c.commit()
 
 # ============================================================
 #  API
@@ -121,70 +112,72 @@ def set_coins(uid, v):
 async def api(method, data=None):
     async with session.post(f"{API}/{method}", json=data or {}) as r:
         obj = await r.json(content_type=None)
-        if not obj.get('ok'):
-            raise RuntimeError(f"{method}: {obj.get('description')}")
+        if not obj.get('ok'): raise RuntimeError(f"{method}: {obj.get('description')}")
         return obj.get('result')
 
 async def send_message(chat_id, text, **kw):
-    data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'HTML'}
-    data.update(kw)
+    data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'HTML'}; data.update(kw)
     return await api('sendMessage', data)
 
 async def answer_widget(qid, payload):
     if isinstance(payload, dict):
         payload = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-    try:
-        await api('answerWidgetQuery', {'widget_query_id': qid, 'data': payload[:1900]})
-    except Exception:
-        logging.exception("answerWidgetQuery failed")
+    try: await api('answerWidgetQuery', {'widget_query_id': qid, 'data': payload[:1900]})
+    except Exception: logging.exception("answerWidgetQuery failed")
 
 async def send_game_widget(chat_id, chat_data='menu'):
     return await api('sendWidget', {
-        'chat_id': chat_id,
-        'html': GAME_WIDGET_HTML,
-        'width': 380,
-        'height': 680,
-        'allow_queries': True,
-        'chat_data': chat_data
+        'chat_id': chat_id, 'html': GAME_WIDGET_HTML,
+        'width': 400, 'height': 900,
+        'allow_queries': True, 'chat_data': chat_data
     })
 
 # ============================================================
-#  Widget HTML — заполняет весь экран
+#  Widget HTML — на весь экран
 # ============================================================
 GAME_WIDGET_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
-html,body{height:100%;width:100%;overflow:hidden}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{
+  height:100%;height:100vh;height:100dvh;
+  width:100%;width:100vw;width:100dvw;
+  overflow:hidden;
+}
 body{
+  height:100%;height:100vh;height:100dvh;
+  width:100%;width:100vw;width:100dvw;
+  overflow:hidden;
   padding:6px;
+  display:flex;
   background:linear-gradient(165deg,#AECFE9,#82AEDB 55%,#6E9AC9);
+  background-attachment:fixed;
   color:#0F2440;
   font-family:ui-rounded,'SF Pro Rounded',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   font-size:14px;font-weight:600;-webkit-font-smoothing:antialiased;
-  display:flex;
 }
 .wrap{
-  flex:1;display:flex;flex-direction:column;min-height:0;min-width:0;
-  background:#fff;border-radius:20px;
+  flex:1;min-width:0;min-height:0;
+  display:flex;flex-direction:column;
+  background:#fff;border-radius:22px;
   padding:12px 12px 6px;
   box-shadow:0 20px 44px rgba(30,64,120,.22),0 3px 10px rgba(30,64,120,.10);
 }
 .brand{font-size:10px;font-weight:800;letter-spacing:2px;color:#6E9AC9;text-transform:uppercase;flex-shrink:0}
-.title{font-size:19px;font-weight:900;letter-spacing:-.4px;margin:4px 0 2px;color:#0F2440;flex-shrink:0}
-.sub{font-size:11.5px;color:#6E86A0;margin-bottom:4px;line-height:1.35;flex-shrink:0}
-#scorebar{display:none;justify-content:space-between;gap:6px;padding:6px 10px;background:#F5F9FE;
- border-radius:10px;margin:4px 0 6px;font-size:11px;color:#2E5C8A;flex-shrink:0}
+.title{font-size:20px;font-weight:900;letter-spacing:-.4px;margin:4px 0 2px;color:#0F2440;flex-shrink:0}
+.sub{font-size:12px;color:#6E86A0;margin-bottom:6px;line-height:1.35;flex-shrink:0}
+#scorebar{display:none;justify-content:space-between;gap:6px;padding:8px 12px;background:#F5F9FE;
+ border-radius:12px;margin:4px 0 6px;font-size:12px;color:#2E5C8A;flex-shrink:0}
 #scorebar.on{display:flex}
 #scorebar b{color:#0F2440}
-.content{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
-.content.center{justify-content:center;align-items:center;text-align:center}
-.board-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px 0}
-.board{display:grid;gap:2px;background:#D8E4F0;padding:4px;border-radius:10px;
+.content{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;gap:6px}
+.content.center{justify-content:center;align-items:stretch;text-align:center}
+.board-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:2px}
+.board{display:grid;gap:2px;background:#D8E4F0;padding:4px;border-radius:12px;
  box-shadow:inset 0 0 0 2px #B8CCE0}
 .cell{display:flex;align-items:center;justify-content:center;border:0;border-radius:3px;
  font-weight:800;cursor:default;padding:0;font-family:inherit;color:#0F2440;
- font-size:min(20px,4vh);overflow:hidden;user-select:none;line-height:1}
+ font-size:14px;overflow:hidden;user-select:none;line-height:1}
 .cell.hidden{background:linear-gradient(180deg,#8FB3D4,#6E9AC9);cursor:pointer;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}
 .cell.hidden:active{filter:brightness(.9)}
@@ -198,26 +191,49 @@ body{
 .cell.piece-T{background:#9932CC}.cell.piece-S{background:#32CD32}
 .cell.piece-Z{background:#FF4500}.cell.piece-J{background:#1E90FF}
 .cell.piece-L{background:#FF8C00}
-.text{padding:10px 12px;background:#F5F9FE;border-radius:12px;margin:4px 0;
- font-size:12px;color:#2E5C8A;line-height:1.5;white-space:pre-wrap;
- word-break:break-word;flex-shrink:0;max-width:100%}
+.text{padding:10px 14px;background:#F5F9FE;border-radius:12px;
+ font-size:13px;color:#2E5C8A;line-height:1.5;white-space:pre-wrap;
+ word-break:break-word;flex-shrink:0}
 .reels{flex:1;min-height:0;display:flex;justify-content:center;gap:10px;padding:14px;
- background:linear-gradient(180deg,#0F2440,#1a3a5e);border-radius:16px;margin:4px 0}
-.reel{flex:1;max-width:110px;display:flex;align-items:center;justify-content:center;
- background:#fff;border-radius:12px;font-size:min(56px,8vh);box-shadow:inset 0 -4px 0 rgba(0,0,0,.1)}
-.controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin:6px 0;flex-shrink:0}
-.controls .btn{height:48px;font-size:20px;padding:0}
+ background:linear-gradient(180deg,#0F2440,#1a3a5e);border-radius:16px}
+.reel{flex:1;max-width:120px;display:flex;align-items:center;justify-content:center;
+ background:#fff;border-radius:14px;font-size:min(64px,9vh);box-shadow:inset 0 -4px 0 rgba(0,0,0,.1)}
+.controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;flex-shrink:0}
+.controls .btn{height:52px;font-size:22px;padding:0}
 .fish-box{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
- font-size:min(180px,26vh);line-height:1}
-.buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;flex-shrink:0}
-.btn{display:flex;align-items:center;justify-content:center;height:46px;border:0;border-radius:999px;
- background:#EAF2FB;color:#2E5C8A;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;
- padding:0 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);transition:transform .12s,filter .2s}
+ font-size:min(220px,32vh);line-height:1}
+.menu-grid{
+  flex:1;min-height:0;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  grid-template-rows:1fr 1fr 1fr;
+  gap:8px;
+}
+.menu-card{
+  background:#F5F9FE;border:0;border-radius:18px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;cursor:pointer;padding:8px;font-family:inherit;
+  box-shadow:inset 0 0 0 2px #E1EAF5;
+  transition:transform .12s,filter .2s;
+  min-height:0;min-width:0;
+}
+.menu-card:active{transform:scale(.96);filter:brightness(.97)}
+.menu-card.primary{
+  background:linear-gradient(180deg,#E8F2FC,#D8E8F9);
+  box-shadow:inset 0 0 0 2px #C5DAF0,0 4px 12px rgba(33,126,206,.10);
+}
+.menu-emoji{font-size:min(44px,6.5vh);line-height:1}
+.menu-name{font-size:13px;font-weight:800;color:#2E5C8A;letter-spacing:-.1px}
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;flex-shrink:0}
+.btn{display:flex;align-items:center;justify-content:center;height:48px;border:0;border-radius:999px;
+ background:#EAF2FB;color:#2E5C8A;font-family:inherit;font-size:13.5px;font-weight:800;
+ cursor:pointer;padding:0 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
+ transition:transform .12s,filter .2s}
 .btn.primary{background:linear-gradient(180deg,#3A93E0,#217ECE);color:#fff;
  box-shadow:0 6px 16px rgba(33,126,206,.32)}
 .btn.wide{grid-column:1/-1}
 .btn:active{transform:scale(.97)}
-</style></head><body><div class="wrap">
+</style></head><body><div class="wrap" id="wrap">
 <div class="brand">PIKGAME</div>
 <div class="title" id="title">Загрузка</div>
 <div class="sub" id="sub"></div>
@@ -227,6 +243,39 @@ body{
 </div>
 <script>
 const $=id=>document.getElementById(id);
+
+function forceFullHeight(){
+  const h=window.innerHeight||window.visualViewport&&window.visualViewport.height;
+  if(h>100){
+    document.documentElement.style.height=h+'px';
+    document.body.style.height=h+'px';
+  }
+}
+forceFullHeight();
+window.addEventListener('resize',forceFullHeight);
+window.addEventListener('orientationchange',()=>setTimeout(forceFullHeight,100));
+if(window.visualViewport)window.visualViewport.addEventListener('resize',forceFullHeight);
+
+function layoutBoard(){
+  const wrap=document.querySelector('.board-wrap');
+  if(!wrap)return;
+  const board=wrap.querySelector('.board');
+  if(!board)return;
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  if(W<=0||H<=0)return;
+  const ratio=parseFloat(board.dataset.ratio||'1');
+  let w,h;
+  if(W/H>ratio){h=H;w=H*ratio}else{w=W;h=W/ratio}
+  board.style.width=Math.floor(w)+'px';
+  board.style.height=Math.floor(h)+'px';
+}
+window.addEventListener('resize',layoutBoard);
+if(window.ResizeObserver){
+  const ro=new ResizeObserver(()=>layoutBoard());
+  const observeContent=()=>{const c=$('content');if(c)ro.observe(c)};
+  setTimeout(observeContent,100);
+}
+
 function buzz(){try{TelegramWidget.HapticFeedback.impactOccurred('light')}catch(e){}}
 async function req(a){buzz();try{
   let r=await TelegramWidget.request(a);
@@ -246,50 +295,58 @@ function render(d){
     });
   }
   const c=$('content');c.innerHTML='';c.className='content';
-  if(!d.game)c.classList.add('center');
-  if(d.game==='minesweeper')c.appendChild(drawMinesweeper(d));
-  else if(d.game==='snake')c.appendChild(drawSnake(d));
-  else if(d.game==='tetris')c.appendChild(drawTetris(d));
-  else if(d.game==='fishing')c.appendChild(drawFishing(d));
-  else if(d.game==='casino777')c.appendChild(drawCasino(d));
-  if(d.text){let t=document.createElement('div');t.className='text';t.textContent=d.text;c.appendChild(t)}
-  if(d.controls_grid&&d.controls_grid.length){
-    let ct=document.createElement('div');ct.className='controls';
-    d.controls_grid.forEach(b=>{
-      let el=document.createElement('button');el.className='btn';el.textContent=b.label;
-      el.onclick=()=>req(b.action);ct.appendChild(el);
-    });
-    c.appendChild(ct);
+  if(d.games){
+    c.appendChild(drawMenu(d));
+  } else {
+    if(!d.game)c.classList.add('center');
+    if(d.game==='minesweeper')c.appendChild(drawMinesweeper(d));
+    else if(d.game==='snake')c.appendChild(drawSnake(d));
+    else if(d.game==='tetris')c.appendChild(drawTetris(d));
+    else if(d.game==='fishing')c.appendChild(drawFishing(d));
+    else if(d.game==='casino777')c.appendChild(drawCasino(d));
+    else if(d.emoji){
+      const box=document.createElement('div');box.className='fish-box';box.textContent=d.emoji;
+      c.appendChild(box);
+    }
+    if(d.text){let t=document.createElement('div');t.className='text';t.textContent=d.text;c.appendChild(t)}
+    if(d.controls_grid&&d.controls_grid.length){
+      let ct=document.createElement('div');ct.className='controls';
+      d.controls_grid.forEach(b=>{
+        let el=document.createElement('button');el.className='btn';el.textContent=b.label;
+        el.onclick=()=>req(b.action);ct.appendChild(el);
+      });
+      c.appendChild(ct);
+    }
   }
   renderButtons(d.buttons||[]);
   requestAnimationFrame(layoutBoard);
+  setTimeout(layoutBoard,50);
+  setTimeout(layoutBoard,200);
 }
-
-function layoutBoard(){
-  const wrap=document.querySelector('.board-wrap');
-  if(!wrap)return;
-  const board=wrap.querySelector('.board');
-  if(!board)return;
-  const W=wrap.clientWidth-8;
-  const H=wrap.clientHeight-8;
-  if(W<=0||H<=0)return;
-  const ratio=parseFloat(board.dataset.ratio||'1');
-  let w=W,h=W/ratio;
-  if(h>H){h=H;w=H*ratio}
-  board.style.width=Math.max(60,Math.floor(w))+'px';
-  board.style.height=Math.max(60,Math.floor(h))+'px';
-}
-window.addEventListener('resize',layoutBoard);
 
 function renderButtons(btns){
   const box=$('buttons');box.innerHTML='';
-  if(!btns.length){box.style.display='none';return}
+  if(!btns||!btns.length){box.style.display='none';return}
   box.style.display='grid';
   btns.forEach(b=>{
     let el=document.createElement('button');
     el.className='btn '+(b.primary?'primary ':'')+(b.wide?'wide ':'');
     el.textContent=b.label;el.onclick=()=>req(b.action);box.appendChild(el);
   });
+}
+
+function drawMenu(d){
+  const g=document.createElement('div');g.className='menu-grid';
+  d.games.forEach(x=>{
+    const card=document.createElement('button');
+    card.className='menu-card'+(x.primary?' primary':'');
+    const em=document.createElement('div');em.className='menu-emoji';em.textContent=x.emoji;
+    const nm=document.createElement('div');nm.className='menu-name';nm.textContent=x.name;
+    card.appendChild(em);card.appendChild(nm);
+    card.onclick=()=>req(x.action||('start:'+x.key));
+    g.appendChild(card);
+  });
+  return g;
 }
 
 function drawMinesweeper(d){
@@ -300,6 +357,7 @@ function drawMinesweeper(d){
   for(let r=0;r<d.size;r++)for(let c=0;c<d.size;c++){
     const ch=d.board[r*d.size+c];
     const el=document.createElement('button');el.className='cell';
+    el.style.fontSize='min(20px, 2.5vh)';
     if(ch==='H'){el.classList.add('hidden');el.onclick=()=>req('ms:r:'+r+':'+c)}
     else if(ch==='F'){el.classList.add('hidden','flag');el.textContent='🚩';el.onclick=()=>req('ms:r:'+r+':'+c)}
     else if(ch==='X'){el.classList.add('mine');el.textContent='💣'}
@@ -360,6 +418,7 @@ function drawCasino(d){
 
 (async function(){
   try{
+    forceFullHeight();
     let cd=(TelegramWidget.chatData||'menu');
     let r=await TelegramWidget.request('init:'+cd);
     if(r&&r.result)render(JSON.parse(r.result));
@@ -377,30 +436,18 @@ function drawCasino(d){
 def btn(label, action, primary=False, wide=False):
     return {'label': label, 'action': action, 'primary': primary, 'wide': wide}
 
-def menu_buttons():
-    return [
-        btn('💣 Сапёр',    'start:minesweeper'),
-        btn('🐍 Змейка',   'start:snake'),
-        btn('🎣 Рыбалка',  'start:fishing'),
-        btn('🎰 777',      'start:casino777'),
-        btn('🧱 Тетрис',   'start:tetris'),
-        btn('📊 Рейтинг',  'show:rating'),
-    ]
-
 def menu_view(uid):
-    with db() as c:
-        s = c.execute("SELECT * FROM game_stats WHERE user_id=?", (uid,)).fetchone()
-        coins = get_coins(uid)
-    s = s or {'minesweeper_wins': 0, 'minesweeper_games': 0, 'snake_best': 0,
-              'fishing_score': 0, 'tetris_lines': 0}
-    text = (f"🪙 Монеты казино: {fmt(coins)}\n"
-            f"💣 Сапёр: {s['minesweeper_wins']}/{s['minesweeper_games']} побед\n"
-            f"🐍 Змейка: лучший счёт {s['snake_best']}\n"
-            f"🎣 Рыбалка: {s['fishing_score']} очков\n"
-            f"🧱 Тетрис: {s['tetris_lines']} линий")
     return {
-        'title': 'PikGame', 'sub': 'Мини-игры в Telegram',
-        'text': text, 'buttons': menu_buttons()
+        'title': 'PikGame', 'sub': 'Выберите игру',
+        'games': [
+            {'key': 'minesweeper', 'emoji': '💣', 'name': 'Сапёр',   'primary': True},
+            {'key': 'snake',       'emoji': '🐍', 'name': 'Змейка',  'primary': True},
+            {'key': 'fishing',     'emoji': '🎣', 'name': 'Рыбалка'},
+            {'key': 'casino777',   'emoji': '🎰', 'name': '777'},
+            {'key': 'tetris',      'emoji': '🧱', 'name': 'Тетрис'},
+            {'action': 'show:rating', 'emoji': '📊', 'name': 'Рейтинг'},
+        ],
+        'buttons': []
     }
 
 # ============================================================
@@ -428,12 +475,10 @@ def ms_encode(st):
         for c in range(MS_SIZE):
             if st['status'] == 'lost' and st['board'][r][c] == -1 and not st['flagged'][r][c]:
                 out.append('X')
-            elif st['flagged'][r][c]:
-                out.append('F')
+            elif st['flagged'][r][c]: out.append('F')
             elif st['revealed'][r][c]:
                 v = st['board'][r][c]; out.append('.' if v == 0 else str(v))
-            else:
-                out.append('H')
+            else: out.append('H')
     return ''.join(out)
 
 def ms_reveal(st, r, c):
@@ -454,8 +499,7 @@ def ms_reveal(st, r, c):
                 for dc in (-1, 0, 1):
                     if dr or dc: stack.append((r+dr, c+dc))
     if all(st['revealed'][r][c] for r in range(MS_SIZE) for c in range(MS_SIZE)
-           if st['board'][r][c] != -1):
-        st['status'] = 'won'
+           if st['board'][r][c] != -1): st['status'] = 'won'
 
 def ms_render(st):
     text = {'won': '🏆 Поле очищено!', 'lost': '💥 Мина. Попробуйте снова.',
@@ -479,16 +523,12 @@ def ms_handle(uid, data):
         bump(uid, 'minesweeper_games', 1)
     st = GAME_STATES[uid]['state']
     if data == 'ms:restart':
-        GAME_STATES[uid]['state'] = ms_init()
-        bump(uid, 'minesweeper_games', 1)
+        GAME_STATES[uid]['state'] = ms_init(); bump(uid, 'minesweeper_games', 1)
     elif data.startswith('ms:r:'):
         _, _, r, c = data.split(':'); r, c = int(r), int(c)
-        if st['flagged'][r][c]:
-            st['flagged'][r][c] = False
-        elif st['revealed'][r][c]:
-            st['flagged'][r][c] = True
-        else:
-            ms_reveal(st, r, c)
+        if st['flagged'][r][c]: st['flagged'][r][c] = False
+        elif st['revealed'][r][c]: st['flagged'][r][c] = True
+        else: ms_reveal(st, r, c)
         if st['status'] == 'won': bump(uid, 'minesweeper_wins', 1)
     return ms_render(GAME_STATES[uid]['state'])
 
@@ -525,16 +565,12 @@ def sn_step(st, d):
     st['snake'].insert(0, (nr, nc)); st['dir'] = d
     if (nr, nc) == st['food']:
         st['score'] += 1; st['food'] = sn_spawn_food(st['snake'])
-    else:
-        st['snake'].pop()
+    else: st['snake'].pop()
 
 def sn_render(st):
-    if st['status'] == 'lost':
-        text = f'💥 Столкновение. Счёт: {st["score"]}'
-    elif st['score'] == SN_SIZE*SN_SIZE - 3:
-        text = '🏆 Победа! Поле заполнено.'
-    else:
-        text = 'Управляйте кнопками. Каждый тап — один шаг.'
+    if st['status'] == 'lost': text = f'💥 Столкновение. Счёт: {st["score"]}'
+    elif st['score'] == SN_SIZE*SN_SIZE - 3: text = '🏆 Победа! Поле заполнено.'
+    else: text = 'Управляйте кнопками. Каждый тап — один шаг.'
     controls = [
         btn('⬆️', 'sn:dir:U'), btn('⬅️', 'sn:dir:L'),
         btn('➡️', 'sn:dir:R'), btn('⬇️', 'sn:dir:D'),
@@ -545,8 +581,7 @@ def sn_render(st):
         'title': '🐍 Змейка', 'sub': f'Поле {SN_SIZE}×{SN_SIZE}',
         'scorebar': [{'label': 'Счёт', 'value': st['score']},
                      {'label': 'Длина', 'value': len(st['snake'])}],
-        'text': text,
-        'controls_grid': controls,
+        'text': text, 'controls_grid': controls,
         'buttons': [
             btn('🔄 Новая игра', 'sn:restart', True, True),
             btn('← В меню', 'menu', wide=True),
@@ -555,33 +590,28 @@ def sn_render(st):
 
 def sn_handle(uid, data):
     if uid not in GAME_STATES or GAME_STATES[uid]['game'] != 'snake':
-        GAME_STATES[uid] = {'game': 'snake', 'state': sn_init()}
-        bump(uid, 'snake_games', 1)
+        GAME_STATES[uid] = {'game': 'snake', 'state': sn_init()}; bump(uid, 'snake_games', 1)
     st = GAME_STATES[uid]['state']
     if data == 'sn:restart':
-        GAME_STATES[uid]['state'] = sn_init()
-        bump(uid, 'snake_games', 1)
+        GAME_STATES[uid]['state'] = sn_init(); bump(uid, 'snake_games', 1)
     elif data.startswith('sn:dir:'):
         d = data[7:]
         if d in ('U', 'D', 'L', 'R'):
             sn_step(st, d)
-            if st['status'] == 'lost':
-                bump(uid, 'snake_best', st['score'], 'max')
+            if st['status'] == 'lost': bump(uid, 'snake_best', st['score'], 'max')
     return sn_render(GAME_STATES[uid]['state'])
 
 # ============================================================
 #  FISHING
 # ============================================================
-def fi_init():
-    return {'total': 0, 'casts': 0, 'last': None}
+def fi_init(): return {'total': 0, 'casts': 0, 'last': None}
 
 def fi_cast(st):
     r = random.random() * 100; cum = 0
     for emoji, score, name, weight in FISH_LIST:
         cum += weight
         if r < cum:
-            st['total'] += score; st['casts'] += 1
-            st['last'] = (emoji, score, name)
+            st['total'] += score; st['casts'] += 1; st['last'] = (emoji, score, name)
             return emoji, score, name
     st['total'] += 1; st['casts'] += 1; st['last'] = ('🐟', 1, 'Окунь')
     return '🐟', 1, 'Окунь'
@@ -590,8 +620,7 @@ def fi_render(st):
     if st['last']:
         emoji, score, name = st['last']
         text = f'Поймано: {emoji} {name} (+{score})'
-    else:
-        text = 'Забросьте удочку — тапните «Заброс»!'
+    else: text = 'Забросьте удочку — тапните «Заброс»!'
     return {
         'game': 'fishing', 'emoji': st['last'][0] if st['last'] else '🎣',
         'title': '🎣 Рыбалка', 'sub': 'Поймайте самую редкую рыбу',
@@ -609,12 +638,10 @@ def fi_handle(uid, data):
     if uid not in GAME_STATES or GAME_STATES[uid]['game'] != 'fishing':
         GAME_STATES[uid] = {'game': 'fishing', 'state': fi_init()}
     st = GAME_STATES[uid]['state']
-    if data == 'fi:restart':
-        GAME_STATES[uid]['state'] = fi_init()
+    if data == 'fi:restart': GAME_STATES[uid]['state'] = fi_init()
     elif data == 'fi:cast':
         _, score, _ = fi_cast(st)
-        bump(uid, 'fishing_games', 1)
-        bump(uid, 'fishing_score', score)
+        bump(uid, 'fishing_games', 1); bump(uid, 'fishing_score', score)
     return fi_render(GAME_STATES[uid]['state'])
 
 # ============================================================
@@ -629,14 +656,10 @@ def ca_payout(reels, bet):
 
 def ca_render(st, uid):
     coins = get_coins(uid)
-    if st['last'] is None:
-        text = f'Ставка {SLOT_BET} 🪙. Соберите 3 одинаковых символа!'
-    elif st['last'] > 0:
-        text = f'🎉 Выигрыш: +{fmt(st["last"])} 🪙'
-    else:
-        text = f'😢 Не повезло, –{SLOT_BET} 🪙'
-    if coins < SLOT_BET:
-        text += '\n\n⚠️ Монеты закончились. Нажмите «Пополнить» (бесплатно).'
+    if st['last'] is None: text = f'Ставка {SLOT_BET} 🪙. Соберите 3 одинаковых символа!'
+    elif st['last'] > 0: text = f'🎉 Выигрыш: +{fmt(st["last"])} 🪙'
+    else: text = f'😢 Не повезло, –{SLOT_BET} 🪙'
+    if coins < SLOT_BET: text += '\n\n⚠️ Монеты закончились. Нажмите «Пополнить».'
     return {
         'game': 'casino777', 'reels': st.get('reels', ['❓', '❓', '❓']),
         'title': '🎰 777 Казино', 'sub': f'Ставка {SLOT_BET} 🪙',
@@ -655,19 +678,15 @@ def ca_handle(uid, data):
         GAME_STATES[uid] = {'game': 'casino777',
                             'state': {'reels': ['❓', '❓', '❓'], 'last': None}}
     st = GAME_STATES[uid]['state']
-    if data == 'ca:refill':
-        set_coins(uid, get_coins(uid) + 1000)
+    if data == 'ca:refill': set_coins(uid, get_coins(uid) + 1000)
     elif data == 'ca:spin':
         coins = get_coins(uid)
-        if coins < SLOT_BET:
-            return ca_render(st, uid)
-        set_coins(uid, coins - SLOT_BET)
-        bump(uid, 'casino_games', 1)
+        if coins < SLOT_BET: return ca_render(st, uid)
+        set_coins(uid, coins - SLOT_BET); bump(uid, 'casino_games', 1)
         reels = [random.choice(SLOT_SYMBOLS) for _ in range(3)]
         payout = ca_payout(reels, SLOT_BET)
         if payout > 0:
-            set_coins(uid, get_coins(uid) + payout)
-            bump(uid, 'casino_wins', 1)
+            set_coins(uid, get_coins(uid) + payout); bump(uid, 'casino_wins', 1)
         st['reels'] = reels; st['last'] = payout
     return ca_render(st, uid)
 
@@ -699,27 +718,23 @@ def tt_clear_lines(board):
 def tt_spawn(st):
     piece = tt_new_piece()
     if not tt_fits(st['board'], piece['cells'], piece['x'], piece['y']):
-        st['status'] = 'lost'
-        return
+        st['status'] = 'lost'; return
     st['piece'] = piece
 
 def tt_lock(st):
     p = st['piece']
     for r, c in p['cells']:
         nr, nc = p['y']+r, p['x']+c
-        if 0 <= nr < TT_H and 0 <= nc < TT_W:
-            st['board'][nr][nc] = p['key']
+        if 0 <= nr < TT_H and 0 <= nc < TT_W: st['board'][nr][nc] = p['key']
     st['board'], cleared = tt_clear_lines(st['board'])
     if cleared:
-        st['score'] += [0, 100, 300, 500, 800][cleared]
-        st['lines'] += cleared
+        st['score'] += [0, 100, 300, 500, 800][cleared]; st['lines'] += cleared
     tt_spawn(st)
 
 def tt_init():
     st = {'board': [['.']*TT_W for _ in range(TT_H)],
           'score': 0, 'lines': 0, 'status': 'playing', 'piece': None}
-    tt_spawn(st)
-    return st
+    tt_spawn(st); return st
 
 def tt_encode(st):
     grid = [row[:] for row in st['board']]
@@ -736,7 +751,7 @@ def tt_render(st):
            'Управляйте кнопками. Собирайте линии!'
     controls = [
         btn('⬅️', 'tt:left'), btn('↻', 'tt:rotate'),
-        btn('⬇️', 'tt:drop'),  btn('➡️', 'tt:right'),
+        btn('⬇️', 'tt:drop'), btn('➡️', 'tt:right'),
     ] if st['status'] == 'playing' else []
     return {
         'game': 'tetris', 'width': TT_W, 'height': TT_H,
@@ -744,8 +759,7 @@ def tt_render(st):
         'title': '🧱 Тетрис', 'sub': f'{TT_W}×{TT_H}',
         'scorebar': [{'label': 'Счёт', 'value': st['score']},
                      {'label': 'Линии', 'value': st['lines']}],
-        'text': text,
-        'controls_grid': controls,
+        'text': text, 'controls_grid': controls,
         'buttons': [
             btn('🔄 Новая игра', 'tt:restart', True, True),
             btn('← В меню', 'menu', wide=True),
@@ -754,27 +768,22 @@ def tt_render(st):
 
 def tt_handle(uid, data):
     if uid not in GAME_STATES or GAME_STATES[uid]['game'] != 'tetris':
-        GAME_STATES[uid] = {'game': 'tetris', 'state': tt_init()}
-        bump(uid, 'tetris_games', 1)
+        GAME_STATES[uid] = {'game': 'tetris', 'state': tt_init()}; bump(uid, 'tetris_games', 1)
     st = GAME_STATES[uid]['state']
     if data == 'tt:restart':
-        GAME_STATES[uid]['state'] = tt_init()
-        bump(uid, 'tetris_games', 1)
+        GAME_STATES[uid]['state'] = tt_init(); bump(uid, 'tetris_games', 1)
         return tt_render(GAME_STATES[uid]['state'])
-    if st['status'] != 'playing':
-        return tt_render(st)
+    if st['status'] != 'playing': return tt_render(st)
     p = st['piece']
     if data == 'tt:left':
         if tt_fits(st['board'], p['cells'], p['x']-1, p['y']): p['x'] -= 1
     elif data == 'tt:right':
         if tt_fits(st['board'], p['cells'], p['x']+1, p['y']): p['x'] += 1
     elif data == 'tt:rotate':
-        new_cells = tt_rotate(p['cells'])
-        if tt_fits(st['board'], new_cells, p['x'], p['y']):
-            p['cells'] = new_cells
+        nc = tt_rotate(p['cells'])
+        if tt_fits(st['board'], nc, p['x'], p['y']): p['cells'] = nc
     elif data == 'tt:drop':
-        if tt_fits(st['board'], p['cells'], p['x'], p['y']+1):
-            p['y'] += 1
+        if tt_fits(st['board'], p['cells'], p['x'], p['y']+1): p['y'] += 1
         else:
             tt_lock(st)
             if st['status'] == 'lost':
@@ -787,23 +796,19 @@ def tt_handle(uid, data):
 # ============================================================
 def start_game(uid, game):
     if game == 'minesweeper':
-        GAME_STATES[uid] = {'game': game, 'state': ms_init()}
-        bump(uid, 'minesweeper_games', 1)
+        GAME_STATES[uid] = {'game': game, 'state': ms_init()}; bump(uid, 'minesweeper_games', 1)
         return ms_render(GAME_STATES[uid]['state'])
     if game == 'snake':
-        GAME_STATES[uid] = {'game': game, 'state': sn_init()}
-        bump(uid, 'snake_games', 1)
+        GAME_STATES[uid] = {'game': game, 'state': sn_init()}; bump(uid, 'snake_games', 1)
         return sn_render(GAME_STATES[uid]['state'])
     if game == 'fishing':
         GAME_STATES[uid] = {'game': game, 'state': fi_init()}
         return fi_render(GAME_STATES[uid]['state'])
     if game == 'casino777':
-        GAME_STATES[uid] = {'game': game,
-                            'state': {'reels': ['❓', '❓', '❓'], 'last': None}}
+        GAME_STATES[uid] = {'game': game, 'state': {'reels': ['❓', '❓', '❓'], 'last': None}}
         return ca_render(GAME_STATES[uid]['state'], uid)
     if game == 'tetris':
-        GAME_STATES[uid] = {'game': game, 'state': tt_init()}
-        bump(uid, 'tetris_games', 1)
+        GAME_STATES[uid] = {'game': game, 'state': tt_init()}; bump(uid, 'tetris_games', 1)
         return tt_render(GAME_STATES[uid]['state'])
     return menu_view(uid)
 
@@ -813,34 +818,25 @@ async def widget_action(upd):
     try:
         if data.startswith('init:'):
             target = data[5:]
-            if target.startswith('game:'):
-                out = start_game(uid, target[5:])
-            else:
-                out = menu_view(uid)
+            out = start_game(uid, target[5:]) if target.startswith('game:') else menu_view(uid)
         elif data == 'menu':
-            GAME_STATES.pop(uid, None)
-            out = menu_view(uid)
+            GAME_STATES.pop(uid, None); out = menu_view(uid)
         elif data.startswith('start:'):
             out = start_game(uid, data.split(':', 1)[1])
-        elif data.startswith('ms:'):
-            out = ms_handle(uid, data)
-        elif data.startswith('sn:'):
-            out = sn_handle(uid, data)
-        elif data.startswith('fi:'):
-            out = fi_handle(uid, data)
-        elif data.startswith('ca:'):
-            out = ca_handle(uid, data)
-        elif data.startswith('tt:'):
-            out = tt_handle(uid, data)
+        elif data.startswith('ms:'): out = ms_handle(uid, data)
+        elif data.startswith('sn:'): out = sn_handle(uid, data)
+        elif data.startswith('fi:'): out = fi_handle(uid, data)
+        elif data.startswith('ca:'): out = ca_handle(uid, data)
+        elif data.startswith('tt:'): out = tt_handle(uid, data)
         elif data == 'show:rating':
-            out = {'title': '📊 Рейтинг',
-                   'sub': 'Выберите игру, чтобы открыть таблицу в чате',
-                   'text': 'Отправьте /reit — рейтинг всех игр,\n'
-                           '/reit snake, /reit minesweeper, /reit fishing,\n'
-                           '/reit casino777, /reit tetris — по игре.',
+            out = {'title': '📊 Рейтинг', 'emoji': '📊',
+                   'sub': 'Таблица в чате',
+                   'text': 'Отправьте в чат:\n'
+                           '/reit — сводный рейтинг\n'
+                           '/reit snake · minesweeper · fishing\n'
+                           '/reit casino777 · tetris — по игре',
                    'buttons': [btn('← В меню', 'menu', wide=True)]}
-        else:
-            out = menu_view(uid)
+        else: out = menu_view(uid)
     except Exception as e:
         logging.exception("widget error")
         out = {'title': 'Ошибка', 'sub': str(e), 'buttons': [btn('← В меню', 'menu', True, True)]}
@@ -856,82 +852,61 @@ def _name(row):
 def build_rating(game=None):
     with db() as c:
         if game == 'minesweeper':
-            rows = c.execute("""SELECT u.username,u.first_name,
-                                g.minesweeper_wins w, g.minesweeper_games g
-                                FROM game_stats g JOIN users u ON u.user_id=g.user_id
-                                WHERE g.minesweeper_games > 0
-                                ORDER BY g.minesweeper_wins DESC, g.minesweeper_games DESC LIMIT 15""").fetchall()
+            rows = c.execute("""SELECT u.username,u.first_name,g.minesweeper_wins w,g.minesweeper_games g
+                FROM game_stats g JOIN users u ON u.user_id=g.user_id WHERE g.minesweeper_games>0
+                ORDER BY g.minesweeper_wins DESC,g.minesweeper_games DESC LIMIT 15""").fetchall()
             text = "💣 <b>Рейтинг · Сапёр</b>\n\n"
             if not rows: return text + "Пока никто не играл."
-            for i, r in enumerate(rows, 1):
-                text += f"{i}. {_name(r)} — {r['w']}/{r['g']} побед\n"
+            for i, r in enumerate(rows, 1): text += f"{i}. {_name(r)} — {r['w']}/{r['g']} побед\n"
             return text
         if game == 'snake':
             rows = c.execute("""SELECT u.username,u.first_name,g.snake_best v,g.snake_games g
-                                FROM game_stats g JOIN users u ON u.user_id=g.user_id
-                                WHERE g.snake_best > 0
-                                ORDER BY g.snake_best DESC, g.snake_games DESC LIMIT 15""").fetchall()
+                FROM game_stats g JOIN users u ON u.user_id=g.user_id WHERE g.snake_best>0
+                ORDER BY g.snake_best DESC,g.snake_games DESC LIMIT 15""").fetchall()
             text = "🐍 <b>Рейтинг · Змейка</b>\n\n"
             if not rows: return text + "Пока никто не играл."
-            for i, r in enumerate(rows, 1):
-                text += f"{i}. {_name(r)} — {r['v']} (за {r['g']} игр)\n"
+            for i, r in enumerate(rows, 1): text += f"{i}. {_name(r)} — {r['v']} (за {r['g']} игр)\n"
             return text
         if game == 'fishing':
             rows = c.execute("""SELECT u.username,u.first_name,g.fishing_score v,g.fishing_games g
-                                FROM game_stats g JOIN users u ON u.user_id=g.user_id
-                                WHERE g.fishing_score > 0
-                                ORDER BY g.fishing_score DESC, g.fishing_games DESC LIMIT 15""").fetchall()
+                FROM game_stats g JOIN users u ON u.user_id=g.user_id WHERE g.fishing_score>0
+                ORDER BY g.fishing_score DESC,g.fishing_games DESC LIMIT 15""").fetchall()
             text = "🎣 <b>Рейтинг · Рыбалка</b>\n\n"
             if not rows: return text + "Пока никто не играл."
-            for i, r in enumerate(rows, 1):
-                text += f"{i}. {_name(r)} — {r['v']} очков ({r['g']} забросов)\n"
+            for i, r in enumerate(rows, 1): text += f"{i}. {_name(r)} — {r['v']} очков\n"
             return text
         if game == 'casino777':
             rows = c.execute("""SELECT u.username,u.first_name,g.casino_wins w,g.casino_games g
-                                FROM game_stats g JOIN users u ON u.user_id=g.user_id
-                                WHERE g.casino_games > 0
-                                ORDER BY g.casino_wins DESC, g.casino_games DESC LIMIT 15""").fetchall()
+                FROM game_stats g JOIN users u ON u.user_id=g.user_id WHERE g.casino_games>0
+                ORDER BY g.casino_wins DESC,g.casino_games DESC LIMIT 15""").fetchall()
             text = "🎰 <b>Рейтинг · 777</b>\n\n"
             if not rows: return text + "Пока никто не играл."
-            for i, r in enumerate(rows, 1):
-                text += f"{i}. {_name(r)} — {r['w']}/{r['g']} выигрышей\n"
+            for i, r in enumerate(rows, 1): text += f"{i}. {_name(r)} — {r['w']}/{r['g']} выигрышей\n"
             return text
         if game == 'tetris':
             rows = c.execute("""SELECT u.username,u.first_name,g.tetris_best v,g.tetris_lines l
-                                FROM game_stats g JOIN users u ON u.user_id=g.user_id
-                                WHERE g.tetris_games > 0
-                                ORDER BY g.tetris_best DESC, g.tetris_lines DESC LIMIT 15""").fetchall()
+                FROM game_stats g JOIN users u ON u.user_id=g.user_id WHERE g.tetris_games>0
+                ORDER BY g.tetris_best DESC,g.tetris_lines DESC LIMIT 15""").fetchall()
             text = "🧱 <b>Рейтинг · Тетрис</b>\n\n"
             if not rows: return text + "Пока никто не играл."
-            for i, r in enumerate(rows, 1):
-                text += f"{i}. {_name(r)} — счёт {r['v']}, {r['l']} линий\n"
+            for i, r in enumerate(rows, 1): text += f"{i}. {_name(r)} — счёт {r['v']}, {r['l']} линий\n"
             return text
         text = ("📊 <b>Рейтинг PikGame</b>\n\n"
-                "Чтобы увидеть подробно:\n"
-                "/reit minesweeper — Сапёр\n"
-                "/reit snake — Змейка\n"
-                "/reit fishing — Рыбалка\n"
-                "/reit casino777 — 777\n"
-                "/reit tetris — Тетрис\n\n")
-        with db() as c2:
-            for key, title, order, val in [
-                ('minesweeper', '💣 Сапёр', 'g.minesweeper_wins DESC, g.minesweeper_games DESC',
-                 "g.minesweeper_wins||'/'||g.minesweeper_games"),
-                ('snake', '🐍 Змейка', 'g.snake_best DESC', 'g.snake_best'),
-                ('fishing', '🎣 Рыбалка', 'g.fishing_score DESC', 'g.fishing_score'),
-                ('tetris', '🧱 Тетрис', 'g.tetris_best DESC', 'g.tetris_best'),
-            ]:
-                top = c2.execute(f"""SELECT u.username,u.first_name,{val} v
-                                     FROM game_stats g JOIN users u ON u.user_id=g.user_id
-                                     WHERE g.{key}_games > 0
-                                     ORDER BY {order} LIMIT 3""").fetchall()
-                text += f"<b>{title}</b>\n"
-                if not top:
-                    text += "— пока пусто\n\n"
-                else:
-                    for i, r in enumerate(top, 1):
-                        text += f"  {i}. {_name(r)} — {r['v']}\n"
-                    text += "\n"
+                "/reit minesweeper · snake · fishing · casino777 · tetris\n\n")
+        for key, title, order, val in [
+            ('minesweeper', '💣 Сапёр', 'g.minesweeper_wins DESC,g.minesweeper_games DESC', "g.minesweeper_wins||'/'||g.minesweeper_games"),
+            ('snake', '🐍 Змейка', 'g.snake_best DESC', 'g.snake_best'),
+            ('fishing', '🎣 Рыбалка', 'g.fishing_score DESC', 'g.fishing_score'),
+            ('tetris', '🧱 Тетрис', 'g.tetris_best DESC', 'g.tetris_best'),
+        ]:
+            top = c.execute(f"""SELECT u.username,u.first_name,{val} v FROM game_stats g
+                JOIN users u ON u.user_id=g.user_id WHERE g.{key}_games>0
+                ORDER BY {order} LIMIT 3""").fetchall()
+            text += f"<b>{title}</b>\n"
+            if not top: text += "— пока пусто\n\n"
+            else:
+                for i, r in enumerate(top, 1): text += f"  {i}. {_name(r)} — {r['v']}\n"
+                text += "\n"
         return text
 
 def build_stats():
@@ -969,8 +944,7 @@ async def handle_text(m):
             if game in GAME_NAMES:
                 await send_game_widget(chat_id, chat_data=f'game:{game}')
             else:
-                await send_message(chat_id,
-                    f"Игра не найдена. Доступны: {', '.join(GAME_NAMES)}")
+                await send_message(chat_id, f"Игра не найдена. Доступно: {', '.join(GAME_NAMES)}")
         else:
             await send_game_widget(chat_id, chat_data='menu')
         return
@@ -979,20 +953,15 @@ async def handle_text(m):
         parts = text.split(maxsplit=1)
         game = parts[1].strip().lower() if len(parts) > 1 else None
         if game and game not in GAME_NAMES:
-            await send_message(chat_id, "Нет такой игры. Доступно: "
-                + ', '.join(GAME_NAMES)); return
-        await send_message(chat_id, build_rating(game))
-        return
+            await send_message(chat_id, "Нет такой игры. Доступно: " + ', '.join(GAME_NAMES)); return
+        await send_message(chat_id, build_rating(game)); return
 
     if text.startswith('/stats'):
-        if uid not in ADMINS:
-            await send_message(chat_id, "Нет доступа."); return
-        await send_message(chat_id, build_stats())
-        return
+        if uid not in ADMINS: await send_message(chat_id, "Нет доступа."); return
+        await send_message(chat_id, build_stats()); return
 
     if text.startswith('/cancel'):
-        await send_message(chat_id, "Ок.")
-        return
+        await send_message(chat_id, "Ок."); return
 
 # ============================================================
 #  Polling
@@ -1010,11 +979,9 @@ async def poll():
                 if 'message' in up: await handle_text(up['message'])
                 elif 'widget_query' in up: await widget_action(up['widget_query'])
                 elif 'shared_widget_query' in up: await widget_action(up['shared_widget_query'])
-        except asyncio.CancelledError:
-            raise
+        except asyncio.CancelledError: raise
         except Exception:
-            logging.exception("Polling error")
-            await asyncio.sleep(2)
+            logging.exception("Polling error"); await asyncio.sleep(2)
 
 async def main():
     global session
